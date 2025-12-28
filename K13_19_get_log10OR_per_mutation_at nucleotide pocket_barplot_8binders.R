@@ -11,7 +11,7 @@ library(dplyr)
 wt_aa <- "TEYKLVVVGAGGVGKSALTIQLIQNHFVDEYDPTIEDSYRKQVVIDGETCLLDILDTAGQEEYSAMRDQYMRTGEGFLCVFAINNTKSFEDIHHYREQIKRVKDSEDVPMVLVGNKCDLPSRTVDTKQAQDLARSYGIPFIETSAKTRQGVDDAFYTLVREIRKHKEKMSKDGKKKKKKSKTKCVIM"
 
 # 定义位点信息
-RAF1_Binding_interface_site <- c(21, 25, 39, 31, 33, 36, 37, 38, 39, 40, 41, 67, 71)
+RAF1_Binding_interface_site <- c(21, 25, 31, 33, 36, 37, 38, 39, 40, 41, 67, 71)
 RALGDS_Binding_interface_site <- c(24, 25, 31, 33, 36, 37, 38, 39, 40, 41, 56, 64, 67)
 PI3KCG_binding_interface_site <- c(3, 21, 24, 25, 33, 36, 37, 38, 39, 40, 41, 63, 64, 70, 73)
 SOS1_Binding_interface_site <- c(1, 22, 24, 25, 26, 27, 31, 33, 36, 37, 38, 39, 41, 42, 43, 44, 45, 50, 56, 59, 64, 65, 66, 67, 70, 149, 153)
@@ -116,10 +116,10 @@ classify_site_mutation_types <- function(ddG, weighted_mean_ddG, anno, assay_sel
 }
 
 # ===============================
-# 计算单个assay对的OR值（分别处理每个assay对）
+# 计算单个assay对的OR值（分别处理每个assay对，只保留GTP pocket）
 # ===============================
-calculate_pair_or_pvalue <- function(assay1, assay2) {
-  cat("处理", assay1, "vs", assay2, "...\n")
+calculate_pair_or_pvalue_gtp <- function(assay1, assay2) {
+  cat("处理", assay1, "vs", assay2, "在GTP pocket上的OR...\n")
   
   # 分别读取两个assay的数据
   input1 <- get(paste0("input_", assay1))
@@ -145,9 +145,8 @@ calculate_pair_or_pvalue <- function(assay1, assay2) {
   
   pair_data <- merge(data1, data2, by = c("Pos_real", "wt_codon", "mt_codon"), all = FALSE)
   
-  # 移除两个assay各自的结合界面位点
-  sites_to_remove <- unique(c(binding_sites[[assay1]], binding_sites[[assay2]]))
-  filtered_data <- pair_data[!Pos_real %in% sites_to_remove]
+  # 只保留GTP pocket位点
+  filtered_data <- pair_data[Pos_real %in% GTP_Binding_pocket_site]
   
   # 计算OR值
   is_effect1 <- filtered_data[[paste0("allosteric_mutation_", assay1)]] == TRUE
@@ -175,15 +174,14 @@ calculate_pair_or_pvalue <- function(assay1, assay2) {
     n_mutations = nrow(filtered_data),
     n_effect1 = sum(is_effect1),
     n_effect2 = sum(is_effect2),
-    n_both = sum(is_effect1 & is_effect2),
-    sites_removed = length(sites_to_remove)
+    n_both = sum(is_effect1 & is_effect2)
   ))
 }
 
 # ===============================
 # 主分析流程
 # ===============================
-cat("=== 开始分析所有assay组合 ===\n")
+cat("=== 开始分析所有assay组合在GTP pocket上的OR值 ===\n")
 
 # 定义所有assay
 assay_names <- c("RAF1", "RALGDS", "PI3KCG", "SOS1", "K55", "K27", "K13", "K19")
@@ -196,7 +194,7 @@ for (comb in combinations) {
   assay1 <- comb[1]
   assay2 <- comb[2]
   
-  result <- calculate_pair_or_pvalue(assay1, assay2)
+  result <- calculate_pair_or_pvalue_gtp(assay1, assay2)
   or_results <- rbind(or_results, result)
 }
 
@@ -209,9 +207,16 @@ or_results[, significance := fcase(
 )]
 
 # 打印结果
-cat("\n=== OR值结果 ===\n")
+cat("\n=== GTP pocket OR值结果 ===\n")
 print(or_results[order(comparison_type, OR)])
 
+
+####===========================================================
+
+
+# ============================================================
+# OR Results Visualization with Multi-layer Sorting (No OR-based sorting)
+# ============================================================
 
 # ===============================
 # 分类定义
@@ -223,6 +228,10 @@ darpin     <- c("K55", "K27", "K13", "K19")
 
 active     <- c("RAF1", "RALGDS", "PI3KCG", "K55")
 inactive   <- c("SOS1","K27", "K13", "K19")
+
+# 定义BI1和BI2
+BI1 <- c("RAF1", "RALGDS", "PI3KCG", "SOS1","K55", "K27")
+BI2 <- c("K13", "K19")
 
 # ===============================
 # 数据准备
@@ -251,30 +260,19 @@ or_results$ActivityClass <- with(
          ifelse(Act1 == "Inactive" & Act2 == "Inactive", "Inactive_vs_Inactive", "Active_vs_Inactive"))
 )
 
-# 确保comparison_type列存在
-if (!"comparison_type" %in% colnames(or_results)) {
-  # 根据assay1和assay2是否在BI1或BI2中来推断comparison_type
-  # 这里需要您根据实际情况定义BI1和BI2的组成
-  # 假设BI1包含: RAF1, RALGDS, PI3KCG, SOS1
-  # 假设BI2包含: K55, K27, K13, K19
-  BI1 <- c("RAF1", "RALGDS", "PI3KCG", "SOS1")
-  BI2 <- c("K55", "K27", "K13", "K19")
+# 生成comparison_type分类
+or_results$comparison_type <- apply(or_results, 1, function(x) {
+  assay1 <- x["assay1"]
+  assay2 <- x["assay2"]
   
-  or_results$comparison_type <- apply(or_results, 1, function(x) {
-    assay1_in_BI1 <- x["assay1"] %in% BI1
-    assay1_in_BI2 <- x["assay1"] %in% BI2
-    assay2_in_BI1 <- x["assay2"] %in% BI1
-    assay2_in_BI2 <- x["assay2"] %in% BI2
-    
-    if (assay1_in_BI1 && assay2_in_BI1) {
-      return("BI1_vs_BI1")
-    } else if (assay1_in_BI2 && assay2_in_BI2) {
-      return("BI2_vs_BI2")
-    } else {
-      return("BI1_vs_BI2")
-    }
-  })
-}
+  if (assay1 %in% BI1 && assay2 %in% BI1) {
+    return("BI1_vs_BI1")
+  } else if (assay1 %in% BI2 && assay2 %in% BI2) {
+    return("BI2_vs_BI2")
+  } else {
+    return("BI1_vs_BI2")
+  }
+})
 
 # ===============================
 # 三层层级排序
@@ -312,66 +310,44 @@ or_results$comparison_type <- factor(
 )
 
 # ===============================
-# 计算log(OR)并处理无限值
+# 绘图
 # ===============================
-or_results$log_OR <- log2(or_results$OR)
-
-# 检查是否有无限值
-if (any(is.infinite(or_results$log_OR))) {
-  cat("发现无限值，进行修正...\n")
-  # 将-Inf替换为最小值，+Inf替换为最大值
-  finite_log_OR <- or_results$log_OR[is.finite(or_results$log_OR)]
-  if (length(finite_log_OR) > 0) {
-    min_finite <- min(finite_log_OR, na.rm = TRUE)
-    max_finite <- max(finite_log_OR, na.rm = TRUE)
-    or_results$log_OR[or_results$log_OR == -Inf] <- min_finite - 1
-    or_results$log_OR[or_results$log_OR == Inf] <- max_finite + 1
-  }
-}
-
-# 计算 log10(OR)
-or_results[, OR_log10 := log10(OR)]
-
-# ===============================
-# 绘图（真正用 log10(OR) 作为 Y 值）
-# ===============================
-p_or <- ggplot(or_results, aes(x = Comparison, y = OR_log10, fill = comparison_type)) +
+p_or <- ggplot(or_results, aes(x = Comparison, y = OR, fill = comparison_type)) +
   geom_bar(stat = "identity", width = 0.7, alpha = 0.85) +
   geom_text(aes(label = sprintf("%.2f", log10(OR))), vjust = -0.5, size = 2, color = "black") +
-  geom_text(aes(label = significance),
-            vjust = -1.5, size = 2.5, color = "#F1DD10") +
+  geom_text(aes(label = significance), vjust = -1.5, size = 2.5, color = "#F1DD10") +
   scale_fill_manual(values = c(
     "BI1_vs_BI1" = "#F4270C",
     "BI1_vs_BI2" = "#F4AD0C",
     "BI2_vs_BI2" = "#1B38A6"
   )) +
   labs(
-    title = "Odds Ratios for Allosteric Mutation Co-occurrence (delete 2BIs)\nper mutation",
+    title = "Odds Ratios for Allosteric site Co-occurrence in GTPpocket\nper mutation",
     x = "Binder Pair Comparison",
-    y = "log10(OR)",
+    y = "Odds Ratio (OR)",
     fill = "Comparison Type"
   ) +
-  theme_bw(base_size = 12) +
+  theme_bw(base_size = 10) +
   theme(
-    axis.text.x = element_text(
-      angle = 45, 
-      vjust = 1, 
-      hjust = 1,
-      size = 9
-    )
-  )
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 9),
+    axis.text.y = element_text(size = 8),
+    axis.title = element_text(size = 9),
+    plot.title = element_text(size = 9, hjust = 0.5),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    legend.position = "top"
+  ) +
+  ylim(0, max(or_results$OR, na.rm = TRUE) * 1.2)
 
-p_or
-
+print(p_or)
 
 # ===============================
-# 保存对数转换后的图表
+# 保存图表
 # ===============================
 ggsave(
-  filename = "C:/Users/36146/OneDrive - USTC/Manuscripts/K13_K19/figures/20251031_version_all_figure/f4/20251116/Binder_OR_AllostericSites_three_layer_sorted_per_mutation_log10.pdf",
+  filename = "C:/Users/36146/OneDrive - USTC/Manuscripts/K13_K19/figures/20251031_version_all_figure/f4/20251106/Binder_OR_AllostericSites_multilayer_sorted in GTP pocket per mutation logic sort.pdf",
   plot = p_or,
   device = cairo_pdf,
   width = 12,
   height = 8
 )
-

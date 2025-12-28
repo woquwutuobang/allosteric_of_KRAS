@@ -527,51 +527,6 @@ create_secondary_structure_plot_both_exclude_interface <- function(results_data)
   return(final_plot)
 }
 
-# ===============================
-# Summary Statistics Function for BOTH data types
-# ===============================
-print_summary_statistics_both <- function(results_data) {
-  cat("=== Summary Statistics (Diagonal Only, Both Data Types, Excluding Interface) ===\n")
-  
-  # Filter for diagonal only
-  diagonal_data <- results_data %>% filter(assay == distance_assay)
-  
-  summary_stats <- diagonal_data %>%
-    group_by(region, group, data_type) %>%
-    summarise(
-      n_success_a = sum(!is.na(a_value)),
-      n_success_b = sum(!is.na(b_value)),
-      mean_a = mean(a_value, na.rm = TRUE),
-      mean_b = mean(b_value, na.rm = TRUE),
-      .groups = "drop"
-    )
-  
-  print(summary_stats)
-  
-  cat("\n=== Success Rates by Region, Group and Data Type ===\n")
-  success_rates <- diagonal_data %>%
-    group_by(region, group, data_type) %>%
-    summarise(
-      success_rate_a = mean(!is.na(a_value)) * 100,
-      success_rate_b = mean(!is.na(b_value)) * 100,
-      .groups = "drop"
-    )
-  
-  print(success_rates)
-  
-  cat("\n=== P-value Summary by Group and Data Type ===\n")
-  pvalue_summary <- diagonal_data %>%
-    filter(!is.na(p_value)) %>%
-    group_by(region, group, data_type) %>%
-    summarise(
-      n_significant = sum(p_value < 0.05),
-      n_total = n(),
-      significance_rate = n_significant / n_total * 100,
-      .groups = "drop"
-    )
-  
-  print(pvalue_summary)
-}
 
 # ===============================
 # Execute Analysis - Excluding Binding Interface - BOTH raw and median with BI1/BI2 colors
@@ -581,13 +536,15 @@ print_summary_statistics_both <- function(results_data) {
 results_both_exclude_interface <- analyze_all_assays_both_exclude_interface(
   input_template = "C:/Users/36146/OneDrive - USTC/DryLab/MoCHI_8binders_l2_e6_RA_old_new_merge_at_mochi_20250901_2/task_901/weights/weights_Binding_ASSAY.txt",
   anno_file = "C:/Users/36146/OneDrive - USTC/DryLab/base_information_for_K13_K19_project/anno_final_for_8.csv",  
-  output_file = "C:/Users/36146/OneDrive - USTC/Manuscripts/K13_K19/figures/20251108_revise_figures/f5/20251117/exponential_fit_results_both_diagonal_exclude_interface2.csv",
+  #output_file = "C:/Users/36146/OneDrive - USTC/Manuscripts/K13_K19/figures/20251108_revise_figures/f5/20251117/exponential_fit_results_both_diagonal_exclude_interface2.csv",
   exclude_interface = TRUE,
   interface_cutoff = 5
 )
 
 # CODE 1: Create overall structure plot (excluding interface) with BI1/BI2 color scheme
 overall_plot_both_exclude_interface <- create_overall_plot_both_exclude_interface(results_both_exclude_interface)
+
+overall_plot_both_exclude_interface
 
 # Save overall plot using ggsave (outside the function)
 if (!is.null(overall_plot_both_exclude_interface)) {
@@ -603,6 +560,8 @@ if (!is.null(overall_plot_both_exclude_interface)) {
 
 # CODE 2: Create secondary structure plot (excluding interface) with BI1/BI2 color scheme
 secondary_plot_both_exclude_interface <- create_secondary_structure_plot_both_exclude_interface(results_both_exclude_interface)
+
+secondary_plot_both_exclude_interface
 
 # Save secondary structure plot using ggsave (outside the function)
 if (!is.null(secondary_plot_both_exclude_interface)) {
